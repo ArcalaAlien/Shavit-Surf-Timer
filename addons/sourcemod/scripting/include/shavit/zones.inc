@@ -49,6 +49,7 @@ enum
 	Zone_Gravity,			// lets you set a specific gravity while inside this zone
 	Zone_Speedmod,			// creates a player_speedmod
 	Zone_Output,			// outputs a targetname / classname when player enter or leave this zone
+	Zone_Unknown,			// Unknown zone, does nothing.
 	ZONETYPES_SIZE
 };
 
@@ -67,6 +68,7 @@ enum
 	ZF_OutputTargetname = (1 << 9), // output a targetname
 	ZF_OutputClassname = (1 << 10), // output a classname
 	ZF_OutputEndTouch = (1 << 11), // output on EndTouch
+	
 };
 
 enum // Zone speed limit flag. Used by specify prestrafe limit to each stage zone. 
@@ -78,6 +80,7 @@ enum // Zone speed limit flag. Used by specify prestrafe limit to each stage zon
 	ZSLF_NoVerticalSpeed = (1 << 4), // work as the same behaviour of convar "shavit_core_nozaxisspeed": dont start timer if vertical speed exists
 	ZSLF_ResetSpeedAfterTeleported = (1 << 5), // reset speed after teleported by a teleport zone
 	ZSLF_SafeHeightCheck = (1 << 5), // check if client's height of current position in a safe range before timer activate
+	ZSLF_TeleHop = (1 << 6), // Is this zone considered a telehop (TH) zone? 
 };
 
 #define DEFAULT_SPEEDLIMITFLAG (ZSLF_LimitSpeed|ZSLF_BlockBhop)
@@ -167,12 +170,45 @@ stock void GetZoneName(int client, int zoneType, char[] output, int size)
 		"Zone_Gravity",
 		"Zone_Speedmod",
 		"Zone_Output",
+		"Zone_Unknown"
 	};
 
 	if (zoneType < 0 || zoneType >= ZONETYPES_SIZE)
 		FormatEx(output, size, "%T", "Zone_Unknown", client);
 	else
 		FormatEx(output, size, "%T", sTranslationStrings[zoneType], client);
+}
+
+stock void GetZoneNameDEBUG(int client, int zoneType, char[] output, int size)
+{
+	static char sTranslationStrings[ZONETYPES_SIZE][] = {
+		"Zone_Start",
+		"Zone_End",
+		"Zone_Stage",	
+		"Zone_Checkpoint",
+		"Zone_Autobhop",
+		"Zone_NoJump",
+		"Zone_Respawn",
+		"Zone_Stop",
+		"Zone_Slay",
+		"Zone_Freestyle",
+		"Zone_CustomSpeedLimit",
+		"Zone_Teleport",
+		"Zone_CustomSpawn",
+		"Zone_Easybhop",
+		"Zone_Slide",
+		"Zone_Airaccelerate",
+		"Zone_NoTimerGravity",
+		"Zone_Gravity",
+		"Zone_Speedmod",
+		"Zone_Output",
+		"Zone_Unknown"
+	};
+
+	if (zoneType < 0 || zoneType >= ZONETYPES_SIZE)
+		strcopy(output, size, "Zone_Unknown");
+	else
+		strcopy(output, size, sTranslationStrings[zoneType]);
 }
 
 // Please follow something like this:

@@ -25,10 +25,12 @@
 #define _shavit_core_included
 
 #define SHAVIT_VERSION "3.4.2"
-#define SHAVIT_SURF_VERSION "1.0.7"
+#define SHAVIT_SURF_VERSION "1.1.0"
 #define SHAVIT_SURF_VERSION_MAJOR 1
-#define SHAVIT_SURF_VERSION_MINOR 0
-#define SHAVIT_SURF_VERSION_PATCH 7
+#define SHAVIT_SURF_VERSION_MINOR 1
+#define SHAVIT_SURF_VERSION_PATCH 0
+
+#define SERVER 0
 
 #define STYLE_LIMIT 128 // 256 is too much for style.
 #define MAX_STAGES 64
@@ -82,8 +84,10 @@ enum
 enum
 {
 	Track_Main,
-	Track_Bonus,
-	Track_Bonus_Last = 12, //8 is not enough for surf bonuses
+	Track_Stage,
+	Track_Stage_Last = 20,
+	Track_Bonus = 21,
+	Track_Bonus_Last = 41, //8 is not enough for surf bounus
 	TRACKS_SIZE
 };
 
@@ -520,9 +524,13 @@ stock void GetTrackName(int client, int track, char[] output, int size, bool inc
 	{
 		FormatEx(output, size, "%T", "Track_Main", client);
 	}
+	else if (Track_Stage <= track < Track_Bonus)
+	{
+		FormatEx(output, size, "Track %d", track); // TODO: Replace with translation below
+	}
 	else if (Track_Bonus <= track < TRACKS_SIZE)
 	{
-		FormatEx(output, size, "%T", include_bonus_num ? "Track_Bonus" : "Track_Bonus_NoNum", client, track);
+		FormatEx(output, size, "%T", include_bonus_num ? "Track_Bonus" : "Track_Bonus_NoNum", client, track - (Track_Stage_Last));
 	}
 	else
 	{

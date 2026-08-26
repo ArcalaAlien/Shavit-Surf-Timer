@@ -106,7 +106,7 @@
 	}
 	"ItemDisabled"
 	{
-		"en"		"　"
+		"en"		"x"
 	}
 	"MapNoBonus"
 	{

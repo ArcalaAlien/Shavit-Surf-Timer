@@ -31,11 +31,12 @@
 #include <shavit/zones>
 #include <shavit/wr>
 #include <shavit/hud>
-#include <shavit/checkpoints>
+
 #include <shavit/physicsuntouch>
 
 #undef REQUIRE_PLUGIN
 #include <adminmenu>
+#include <shavit/checkpoints>
 #include <shavit/replay-recorder>
 #include <shavit/replay-playback>
 
@@ -185,6 +186,7 @@ Convar gCV_ResetClassnameMain = null;
 Convar gCV_ResetClassnameBonus = null;
 Convar gCV_DefaultZonePrespeedLimit = null;
 Convar gCV_TimerActivateSafeHeight = null;
+Convar gCV_AutohookOnMapStart = null;
 
 // handles
 Handle gH_DrawVisible = null;
@@ -313,6 +315,11 @@ public void OnPluginStart()
 	RegAdminCmd("sm_editzone", Command_ZoneEdit, ADMFLAG_RCON, "Modify an existing zone. Alias of sm_zoneedit.");
 	RegAdminCmd("sm_modifyzone", Command_ZoneEdit, ADMFLAG_RCON, "Modify an existing zone. Alias of sm_zoneedit.");
 	RegAdminCmd("sm_hookzone", Command_HookZone, ADMFLAG_RCON, "Hook an existing trigger, teleporter, or button.");
+	RegAdminCmd("sm_autohook", Command_AutohookZones, ADMFLAG_RCON, "Search the map for all existing triggers and add them to the timer.");
+
+	RegAdminCmd("sm_zonecount", Command_ZoneCount, ADMFLAG_RCON, "Returns the number of zones loaded.");
+	RegAdminCmd("sm_listzones", Command_ListZones, ADMFLAG_RCON, "Shows a detailed list of zones loaded.");
+	RegAdminCmd("sm_currentzone", Command_CurrentZone, ADMFLAG_RCON, "Returns information about the current zone you or a player is standing in.");
 
 	RegAdminCmd("sm_tptozone", Command_TpToZone, ADMFLAG_RCON, "Teleport to a zone");
 
@@ -379,7 +386,8 @@ public void OnPluginStart()
 
 	gI_OffsetMFEffects = FindSendPropInfo("CBaseEntity", "m_fEffects");
 
-	if(gI_OffsetMFEffects == -1)
+	if(gI_OffsetMFEffects == -1)            
+	 
 	{
 		SetFailState("Could not find CBaseEntity:m_fEffects");
 	}
@@ -418,6 +426,7 @@ public void OnPluginStart()
 	gCV_ResetClassnameBonus = new Convar("shavit_zones_resetclassname_bonus", "", "What classname to use when resetting the player (on bonus tracks).\nWould be applied once player teleports to the start zone or on every start if shavit_zones_forcetargetnamereset cvar is set to 1.\nYou don't need to touch this");
 	gCV_AllowSetStartPosition = new Convar("shavit_zones_allowsetstartpostion", "1", "Allow players to use !setstart to set custom spawn positions for tracks/stages.\n0 -Disabled\n1 - Enabled", 0, true, 0.0, true, 1.0);
 	gCV_TimerActivateSafeHeight = new Convar("shavit_zones_timeractivate_safeheight", "16.0", "How many units above bottom of zone is safe to activate timer.", 0, true, 0.0, false, 0.0);
+	gCV_AutohookOnMapStart = new Convar("shavit_zones_autohook_on_map_start", "1", "Run the autohook process every time a map loads.\n0 - Disabled, 1 - Enabled", 0, true, 0.0, true, 1.0);
 
 	char defaultFlags[16];
 	IntToString(DEFAULT_SPEEDLIMITFLAG, defaultFlags, sizeof(defaultFlags));
@@ -1187,6 +1196,7 @@ bool JumpToZoneType(KeyValues kv, int type, int track)
 		{"Gravity", ""},
 		{"Speedmod", ""},
 		{"Output", ""},
+		{"Unknown", ""}
 	};
 
 	char key[4][50];
@@ -1355,6 +1365,7 @@ public void OnMapStart()
 {
 	GetLowercaseMapName(gS_Map);
 	LoadZoneSettings();
+	
 	//UnloadZones();
 
 	if (gEV_Type == Engine_TF2)
@@ -1402,6 +1413,10 @@ public void Shavit_LoadZonesHere()
 	{
 		add_prebuilts_to_cache("func_button", true);
 		FindEntitiesToHook("func_rot_button", ZoneForm_func_button);
+	}
+
+	if (gCV_AutohookOnMapStart.BoolValue && gH_SQL) {
+		Autohook_Start(SERVER);
 	}
 }
 
@@ -1878,7 +1893,7 @@ void RefreshZones()
 
 public void SQL_RefreshZones_Callback(Database db, DBResultSet results, const char[] error, any data)
 {
-	if(results == null)
+	if(results == null || error[0] != '\0')
 	{
 		LogError("Timer (zone refresh) SQL query failed. Reason: %s", error);
 		return;
@@ -2582,6 +2597,8 @@ public Action Command_HookZone(int client, int args)
 	return Plugin_Handled;
 }
 
+#include <shavit/autohook>
+
 public Action Command_ReloadZoneSettings(int client, int args)
 {
 	LoadZoneSettings();
@@ -2796,7 +2813,9 @@ public Action Command_Stages(int client, int args)
 				TeleportEntity(client, fCenter, NULL_VECTOR, view_as<float>({0.0, 0.0, 0.0}));
 			}
 
-			Shavit_TrimFailureFrames(client);
+			if (gB_ReplayRecorder) {
+				Shavit_TrimFailureFrames(client);
+			}
 			Shavit_StopStageTimer(client);
 		}
 	}
@@ -3876,6 +3895,102 @@ public int MenuHandler_SubCustomZones(Menu menu, MenuAction action, int client, 
 	return 0;
 }
 
+public Action Command_ZoneCount(int client, int args)
+{
+	ReplyToCommand(client, "[Timer]: %d zones are currently loaded", gI_MapZones); // TODO: Replace with translation
+	return Plugin_Handled;
+}
+
+public Action Command_ListZones(int client, int args)
+{
+	if (gI_MapZones == 0) {
+		ReplyToCommand(client, "[Timer]: There are no zones loaded!"); // TODO: Replace with translation
+		return Plugin_Handled;
+	}
+
+	for (int i = 0; i < gI_MapZones; i++) {
+		char zoneName[64];
+		char triggerName[128];
+		GetZoneName(client, gA_ZoneCache[i].iType, zoneName, sizeof(zoneName));
+		if (IsValidEntity(gA_ZoneCache[i].iEntity)) {
+			GetEntPropString(gA_ZoneCache[i].iEntity, Prop_Data, "m_iName", triggerName, sizeof(triggerName));
+		}
+
+		ReplyToCommand(client, "[Timer]: Zone Data\n\tDatabase ID: %d\n\tTrack: %d\n\tData (Stage, usually.): %d\n\tZone Type: %s\n\tTrigger Name: %s", 
+		gA_ZoneCache[i].iDatabaseID, 
+		gA_ZoneCache[i].iTrack,
+		gA_ZoneCache[i].iData,
+		zoneName,
+		triggerName);
+		Shavit_LogMessage("[Timer]: Zone Data\n\tDatabase ID: %d\n\tTrack: %d\n\tData (Stage, usually.): %d\n\tZone Type: %s\n\tTrigger Name: %s", 
+		gA_ZoneCache[i].iDatabaseID, 
+		gA_ZoneCache[i].iTrack,
+		gA_ZoneCache[i].iData,
+		zoneName,
+		triggerName);
+	}
+	return Plugin_Handled;
+}
+
+public Action Command_CurrentZone(int client, int args)
+{
+	// switch (args) {
+	// 	case 0: {
+
+	// 	}
+
+	// 	case 1: {
+			
+	// 	}
+
+	// 	default: {
+			
+	// 	}
+	// }
+	if (client == SERVER) {
+		ReplyToCommand(client, "As the server you must specify a player! Example: sm_currentzone johndoe12");
+		return Plugin_Handled;
+	}
+
+	int zoneId = GetPlayerCurrentZone(client);
+	if (zoneId == -1) {
+		ReplyToCommand(client, "You are not currently in a zone!");
+		return Plugin_Handled;
+	}
+
+	PrintZone(client, gA_ZoneCache[zoneId]);
+
+	return Plugin_Handled;
+}
+
+int GetPlayerCurrentZone(int client) {
+	int zoneId = -1;
+
+	for (int i = 0; i < MAX_ZONES; i++) {
+		if (gB_InsideZoneID[client][i]) {
+			zoneId = i;
+			break;
+		}
+	}
+
+	return zoneId;
+}
+
+void PrintZone(int client, zone_cache_t zone) {
+	char zoneName[32];
+	GetZoneNameDEBUG(client, zone.iType, zoneName, sizeof(zoneName));
+
+	ReplyToCommand(client, "## Zone Info ##\nTrack: %d\nStage: %d\nEntity: %d\nType: %s\nFlags: %d\nSpeedlimit Flags: %d\nDatabase ID: %d\nSource: %s\nTarget: %s\nCorner 1: %.2f,%.2f,%.2f\nCorner 2: %.2f,%.2f,%.2f\nDestination: %.2f,%.2f,%.2f\n", 
+	zone.iTrack, zone.iData,
+	zone.iEntity, zoneName, zone.iFlags,
+	zone.iSpeedLimitFlags, zone.iDatabaseID,
+	zone.sSource, zone.sTarget,
+	EXPAND_VECTOR(zone.fCorner1),
+	EXPAND_VECTOR(zone.fCorner2),
+	EXPAND_VECTOR(zone.fDestination));
+}
+
+
 public Action Command_DeleteZone(int client, int args)
 {
 	if (!gH_SQL)
@@ -4741,8 +4856,11 @@ public Action Shavit_OnUserCmdPre(int client, int &buttons, int &impulse, float 
 
 		float fGroundPosition[3];
 
-		if(TR_DidHit() && TR_GetEndPosition(fGroundPosition) && GetVectorDistance(fPosition, fGroundPosition) <= 8.0)
+
+		if(TR_DidHit())
 		{
+			TR_GetEndPosition(fGroundPosition);
+			GetVectorDistance(fPosition, fGroundPosition) <= 8.0;
 			float fSpeed[3];
 			GetEntPropVector(client, Prop_Data, "m_vecAbsVelocity", fSpeed);
 
@@ -5889,7 +6007,7 @@ public void SQL_InsertZone_Callback(Database db, DBResultSet results, const char
 	pack.ReadCellArray(cache, sizeof(cache));
 	delete pack;
 
-	if (results == null)
+	if (results == null || error[0] != '\0')
 	{
 		LogError("Timer (zone insert) SQL query failed. Reason: %s", error);
 		return;
@@ -5900,11 +6018,12 @@ public void SQL_InsertZone_Callback(Database db, DBResultSet results, const char
 		cache.iEntity = gA_ZoneCache[i].iEntity;
 		if (MyArrayEquals(gA_ZoneCache[i], cache, sizeof(zone_cache_t)))
 		{
-			gA_ZoneCache[i].iDatabaseID = results.InsertId > 0 ? results.InsertId:cache.iDatabaseID;
+			gA_ZoneCache[i].iDatabaseID = results.InsertId > 0 ? results.InsertId : cache.iDatabaseID;
 			break;
 		}
 	}
 
+	Shavit_LogMessage("Successfully inserted zone");
 	Call_StartForward(gH_Forwards_ZoneCreated);
 	Call_PushCell(cache.iEntity);
 	Call_PushCell(cache.iType);
@@ -5943,7 +6062,7 @@ public Action Timer_DrawZones(Handle Timer, any drawAll)
 
 		if (drawAll || gA_ZoneSettings[type][track].bVisible || (gA_ZoneCache[i].iFlags & ZF_ForceRender) > 0)
 		{
-			if ((gA_ZoneCache[i].iEntity == -1) || (form == ZoneForm_trigger_teleport || form == ZoneForm_func_button) && !(drawAll || (gA_ZoneCache[i].iFlags & ZF_ForceRender) > 0))
+			if ((gA_ZoneCache[i].iEntity == -1) || type == -1 || track == -1 || (form == ZoneForm_trigger_teleport || form == ZoneForm_func_button) && !(drawAll || (gA_ZoneCache[i].iFlags & ZF_ForceRender) > 0))
 			{
 				continue;
 			}
@@ -6256,9 +6375,13 @@ void DrawZone(float points[8][3], int color[4], float life, float width, bool fl
 				GetClientEyePosition(i, eyes);
 
 				if(gI_ZoneDisplayType[i][type][track] != ZoneDisplay_None &&
-					(GetVectorDistance(eyes, center) <= 2048.0 ||
-					(TR_TraceRayFilter(eyes, center, MASK_PLAYERSOLID, RayType_EndPoint, TraceFilter_World) && !TR_DidHit())))
-				{
+					(GetVectorDistance(eyes, center) <= 2048.0))
+				{	
+					TR_TraceRayFilter(eyes, center, MASK_PLAYERSOLID, RayType_EndPoint, TraceFilter_World);
+					if (TR_DidHit()) {
+						continue;
+					}
+
 					clients[count++] = i;
 				}
 			}
@@ -6347,6 +6470,7 @@ public void Shavit_OnDatabaseLoaded()
 	if (gB_YouCanLoadZonesNow && gCV_SQLZones.BoolValue)
 	{
 		RefreshZones();
+		Command_AutohookZones(SERVER, 0);
 	}
 
 	for(int i = 1; i <= MaxClients; i++)
@@ -6929,6 +7053,7 @@ public void StartTouchPost(int entity, int other)
 
 						if (!(Shavit_IsClientRepeat(other)))
 						{
+							Shavit_LogMessage("Client has reached next stage!");
 							Call_StartForward(gH_Forwards_ReachNextStage);
 							Call_PushCell(other);
 							Call_PushCell(track);
@@ -7128,6 +7253,7 @@ public void TouchPost(int entity, int other)
 	if (gCV_EnforceTracks.BoolValue && type > Zone_End && track != Shavit_GetClientTrack(other))
 		return;
 
+	
 	if (gA_ZoneCache[zone].iForm == ZoneForm_trigger_multiple || gA_ZoneCache[zone].iForm == ZoneForm_trigger_teleport)
 	{
 		if (!(gA_ZoneCache[zone].iFlags & ZF_FilterIgnore || SDKCall(gH_PassesTriggerFilters, entity, other)))
@@ -7142,6 +7268,7 @@ public void TouchPost(int entity, int other)
 			return;
 		}
 	}
+	
 
 	if (!gB_InsideZoneID[other][zone] && (gI_InsideZone[other][track] & (1 << type)) == 0)
 	{
@@ -7260,8 +7387,9 @@ public void TouchPost(int entity, int other)
 			}
 			else if (track == Track_Main)
 			{
+				Shavit_SetClientLastStage(other, 1);
 				Shavit_StartTimer(other, Track_Main);
-				
+	
 				if(Shavit_IsOnlyStageMode(other) && !Shavit_IsClientRepeat(other))
 				{
 					Shavit_SetOnlyStageMode(other, false);
