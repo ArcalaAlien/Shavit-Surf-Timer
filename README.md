@@ -1,4 +1,4 @@
-# Shavit Surf timer (CS:S ONLY) 
+# Shavit Surf timer (Works on TF2 and CSS) 
 
 #### 　[ Version 1.0.6 ](https://github.com/bhopppp/Shavit-Surf-Timer/releases/tag/v1.0.6)
 #### 　[( click to download )](https://github.com/bhopppp/Shavit-Surf-Timer/releases/download/v1.0.6/Shavit-SurfTimer-v1.0.6.zip)
