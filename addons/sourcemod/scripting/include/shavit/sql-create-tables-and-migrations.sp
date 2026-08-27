@@ -65,6 +65,7 @@ enum
 	Migration_AddUsersFirstlogin, 
 	Migration_SetZoneSpeedLimitFlagToDefault,  //40
 	Migration_PopulateMapplaytimeFromPlayertimesAndStagetimes,
+	Migration_AddAutohookSuccessTable,
 	MIGRATIONS_END
 };
 
@@ -111,6 +112,7 @@ char gS_MigrationNames[][] = {
 	"AddUsersFirstlogin",
 	"SetZoneSpeedLimitFlagToDefault",
 	"PopulateMapplaytimeFromPlayertimesAndStagetimes",
+	"AddAutohooksTable",
 };
 
 static Database gH_SQL;
@@ -318,7 +320,7 @@ public void SQL_CreateTables(Database hSQL, const char[] prefix, int driver)
 	AddQueryLog(trans, sQuery);
 
 	//
-	//// shavit-wr
+	//// shavit-zones
 	//
 
 	if (driver == Driver_mysql)
@@ -336,6 +338,20 @@ public void SQL_CreateTables(Database hSQL, const char[] prefix, int driver)
 		AddQueryLog(trans, sQuery);
 		strcopy(SQLiteMapzonesQuery, sizeof(SQLiteMapzonesQuery), sQuery);
 	}
+
+	if (driver == Driver_mysql)
+	{
+		FormatEx(sQuery ,sizeof(sQuery),
+			"CREATE TABLE IF NOT EXISTS `%sautohooks` (`id` INT AUTO_INCREMENT, `map` VARCHAR(255) NOT NULL, `zones` INT NOT NULL, `status` INT NOT NULL, `info` VARCHAR(255), PRIMARY KEY (id)) %s;",
+			gS_SQLPrefix, sOptionalINNODB);
+	}
+	else
+	{
+		FormatEx(sQuery, sizeof(sQuery),
+			"CREATE TABLE IF NOT EXISTS `%sautohooks` (`id` INTEGER PRIMARY KEY, `map` VARCHAR(255) NOT NULL, `zones` INTEGER NOT NULL, `status` INTEGER NOT NULL, `info` VARCHAR(255));",
+			gS_MySQLPrefix);
+	}
+	AddQueryLog(trans, sQuery);
 
 	FormatEx(sQuery, sizeof(sQuery),
 		"CREATE TABLE IF NOT EXISTS `%sstartpositions` (`auth` INTEGER NOT NULL, `track` TINYINT NOT NULL, `stage` TINYINT NOT NULL, `map` VARCHAR(255) NOT NULL, `pos_x` FLOAT, `pos_y` FLOAT, `pos_z` FLOAT, `ang_x` FLOAT, `ang_y` FLOAT, `ang_z` FLOAT, `angles_only` BOOL, PRIMARY KEY (`auth`, `track`, `map`)) %s;",
@@ -362,6 +378,7 @@ public void Trans_CreateTables_Error(Database db, any data, int numQueries, cons
 		"wrs_min",
 		"wrs",
 		"mapzones",
+		"autohooks",
 		"startpositions",
 	};
 
@@ -463,6 +480,7 @@ void ApplyMigration(int migration)
 		case Migration_AddUsersFirstlogin: ApplyMigration_AddUsersFirstlogin();
 		case Migration_SetZoneSpeedLimitFlagToDefault: ApplyMigration_SetZoneSpeedLimitFlagToDefault();
 		case Migration_PopulateMapplaytimeFromPlayertimesAndStagetimes: ApplyMigration_PopulateMapplaytimeFromPlayertimesAndStagetimes();
+		case Migration_AddAutohookSuccessTable: ApplyMigration_AddAutohookSuccessTable();
 		// case Migration_AddCpwrsStartvelAndEndvel: ApplyMigration_AddCpwrsStartvelAndEndvel();
 		// case Migration_AddCptimesStartvelAndEndvel: ApplyMigration_AddCptimesStartvelAndEndvel();
 	}
@@ -712,6 +730,24 @@ void ApplyMigration_PopulateMapplaytimeFromPlayertimesAndStagetimes()
 	AddQueryLog(trans, sQuery);
 
 	gH_SQL.Execute(trans, Trans_PopulateMapplaytimeFromPlayertimesAndStagetimes_Success, Trans_PopulateMapplaytimeFromPlayertimesAndStagetimes_Failed, 0);
+}
+
+void ApplyMigration_AddAutohookSuccessTable()
+{
+	char sQuery[512];
+	if (gI_Driver == Driver_mysql)
+	{
+		FormatEx(sQuery ,sizeof(sQuery),
+			"CREATE TABLE IF NOT EXISTS `%sautohooks` (`id` INT AUTO_INCREMENT, `map` VARCHAR(255) NOT NULL, `zones` INT NOT NULL, `status` INT NOT NULL, `info` VARCHAR(255), PRIMARY KEY (id)) ENGINE=INNODB;",
+			gS_SQLPrefix);
+	}
+	else
+	{
+		FormatEx(sQuery, sizeof(sQuery),
+			"CREATE TABLE IF NOT EXISTS `%sautohooks` (`id` INTEGER PRIMARY KEY, `map` VARCHAR(255) NOT NULL, `zones` INTEGER NOT NULL, `status` INTEGER NOT NULL, `info` VARCHAR(255));",
+			gS_MySQLPrefix);
+	}
+	Shavit_LogQuery(sQuery);
 }
 
 public void Trans_PopulateMapplaytimeFromPlayertimesAndStagetimes_Success(Database db, DataPack data, int numQueries, DBResultSet[] results, any[] queryData)
