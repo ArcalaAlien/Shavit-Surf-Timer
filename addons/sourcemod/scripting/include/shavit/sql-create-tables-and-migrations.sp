@@ -734,7 +734,10 @@ void ApplyMigration_PopulateMapplaytimeFromPlayertimesAndStagetimes()
 
 void ApplyMigration_AddAutohookSuccessTable()
 {
-	char sQuery[512];
+	char sQuery[512],
+		 sMap[255];
+
+	GetCurrentMap(sMap, sizeof(sMap));
 	if (gI_Driver == Driver_mysql)
 	{
 		FormatEx(sQuery ,sizeof(sQuery),
@@ -748,6 +751,7 @@ void ApplyMigration_AddAutohookSuccessTable()
 			gS_MySQLPrefix);
 	}
 	Shavit_LogQuery(sQuery);
+	InsertMigration(Migration_AddAutohookSuccessTable);
 }
 
 public void Trans_PopulateMapplaytimeFromPlayertimesAndStagetimes_Success(Database db, DataPack data, int numQueries, DBResultSet[] results, any[] queryData)

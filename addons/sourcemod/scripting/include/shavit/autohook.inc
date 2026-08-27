@@ -614,8 +614,8 @@ void Autohook_InsertZones() {
 }
 
 void Autohook_SubmitAutohookStatus(AutohookStatus result) {
-    char sQuery[1024];
-    char error[255],
+    char sQuery[1024],
+         error[255],
          map[255];
 
     GetCurrentMap(map, sizeof(map));
@@ -638,8 +638,59 @@ void Autohook_SubmitAutohookStatus(AutohookStatus result) {
     }
 
     FormatEx(sQuery, sizeof(sQuery),
-    "INSERT INTO %sautohooks (`map`, `zones`, `status`, `info`) VALUES ('%s', %d, %d, '%s');",
+    "INSERT OR REPLACE INTO %sautohooks (`map`, `zones`, `status`, `info`) VALUES ('%s', %d, %d, '%s');",
     gS_MySQLPrefix, map, numZonesCached, result, error);
+}
+
+void Autohook_CheckMapStatus() {
+    char sQuery[512],
+         sMap[255];
+    GetCurrentMap(sMap, sizeof(sMap));
+
+    FormatEx(sQuery, sizeof(sQuery), 
+   "SELECT (`map`, `status`, `info`) \
+    FROM %sautohook \
+    WHERE `map`='%s'", 
+    gS_MySQLPrefix, sMap);
+    QueryLog(gH_SQL, SQL_MapAutohookCheck_Callback, sQuery, _, DBPrio_High);
+}
+
+
+void SQL_MapAutohookCheck_Callback(Database db, DBResultSet results, const char[] error, any data) {
+    if (!db || !results) {
+        Shavit_LogMessage("ERROR WHEN CHECKING FOR MAP AUTOHOOK STATUS: %s", error);
+        return;
+    }
+
+    if (!results.HasResults) {
+        Autohook_Start(SERVER);
+        return;
+    }
+
+    if (results.FetchRow()) {
+        AutohookStatus status = view_as<AutohookStatus>(results.FetchInt(1));
+        char sMap[255],
+             sInfo[255];
+        results.FetchString(0, sMap, sizeof(sMap));
+        results.FetchString(2, sInfo, sizeof(sInfo));
+
+        switch (status) {
+            case AutohookStatus_Partial: {
+                if (gCV_AutohookWarnAboutPartialOnMapStart.BoolValue) {
+                    Shavit_LogMessage("WARNING: Autohook on %s finished with a partial success, you may have to add zones yourself. %s", sMap, sInfo);
+                }
+                return;
+            }
+
+            case AutohookStatus_NoZones, 
+                 AutohookStatus_MaxNumberOfZones: {
+                Shavit_LogMessage("ERROR: Autohook on %s failed with error: %s", sInfo);
+                return;
+            }
+        }
+
+        Autohook_Start(SERVER);
+    }
 }
 
 Action Autohook_Start(int client) {
