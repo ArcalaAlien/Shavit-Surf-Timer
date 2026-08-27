@@ -187,6 +187,7 @@ Convar gCV_ResetClassnameBonus = null;
 Convar gCV_DefaultZonePrespeedLimit = null;
 Convar gCV_TimerActivateSafeHeight = null;
 Convar gCV_AutohookOnMapStart = null;
+Convar gCV_AutohookWarnAboutPartialOnMapStart = null;
 
 // handles
 Handle gH_DrawVisible = null;
@@ -427,6 +428,7 @@ public void OnPluginStart()
 	gCV_AllowSetStartPosition = new Convar("shavit_zones_allowsetstartpostion", "1", "Allow players to use !setstart to set custom spawn positions for tracks/stages.\n0 -Disabled\n1 - Enabled", 0, true, 0.0, true, 1.0);
 	gCV_TimerActivateSafeHeight = new Convar("shavit_zones_timeractivate_safeheight", "16.0", "How many units above bottom of zone is safe to activate timer.", 0, true, 0.0, false, 0.0);
 	gCV_AutohookOnMapStart = new Convar("shavit_zones_autohook_on_map_start", "1", "Run the autohook process every time a map loads.\n0 - Disabled, 1 - Enabled", 0, true, 0.0, true, 1.0);
+	gCV_AutohookWarnAboutPartialOnMapStart = new Convar("shavit_zones_autohook_warn_partial_success_on_start", "1", "When a map loads, if the autohook process finished with a partial success status, warn the server.", 0, true, 0.0, true, 1.0);
 
 	char defaultFlags[16];
 	IntToString(DEFAULT_SPEEDLIMITFLAG, defaultFlags, sizeof(defaultFlags));
@@ -1416,7 +1418,7 @@ public void Shavit_LoadZonesHere()
 	}
 
 	if (gCV_AutohookOnMapStart.BoolValue && gH_SQL) {
-		Autohook_Start(SERVER);
+		Autohook_CheckMapStatus();
 	}
 }
 
