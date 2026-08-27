@@ -950,7 +950,10 @@ public int MenuHandler_HUD(Menu menu, MenuAction action, int param1, int param2)
 			FillerHintText(param1);
 		}
 
-		ShowHUDMenu(param1, GetMenuSelectionPosition());
+		DataPack data = new DataPack();
+		data.WriteCell(param1);
+		data.WriteCell(GetMenuSelectionPosition());
+		RequestFrame(RequestFrame_RedrawHudMenu, data);
 	}
 	else if(action == MenuAction_DisplayItem)
 	{
@@ -989,6 +992,17 @@ public int MenuHandler_HUD(Menu menu, MenuAction action, int param1, int param2)
 	}
 
 	return 0;
+}
+
+void RequestFrame_RedrawHudMenu(DataPack data)
+{
+	int client,
+		selection;
+	data.Reset();
+	client = data.ReadCell();
+	selection = data.ReadCell();
+	data.Close();
+	ShowHUDMenu(client, selection);
 }
 
 bool is_usp(int entity, const char[] classname)
