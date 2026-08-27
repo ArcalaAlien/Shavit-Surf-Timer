@@ -170,6 +170,7 @@ Convar gCV_SaveIps = null;
 Convar gCV_HijackTeleportAngles = null;
 Convar gCV_PrestrafeZone = null;
 Convar gCV_PrestrafeLimit = null;
+Convar gCV_EnableShavitBhop = null;
 
 // cached cvars
 int gI_DefaultStyle = 0;
@@ -362,7 +363,7 @@ public void OnPluginStart()
 	gB_Protobuf = (GetUserMessageType() == UM_Protobuf);
 
 	sv_autobunnyhopping = FindConVar("sv_autobunnyhopping");
-	if (sv_autobunnyhopping) sv_autobunnyhopping.BoolValue = false;
+	if (sv_autobunnyhopping != null) sv_autobunnyhopping.BoolValue = false;
 
 	if (gEV_Type != Engine_CSGO && gEV_Type != Engine_CSS && gEV_Type != Engine_TF2)
 	{
@@ -488,6 +489,7 @@ public void OnPluginStart()
 	gCV_HijackTeleportAngles = new Convar("shavit_core_hijack_teleport_angles", "0", "Whether to hijack player angles on teleport so their latency doesn't fuck up their shit.", 0, true, 0.0, true, 1.0);
 	gCV_PrestrafeZone = new Convar("shavit_core_prestrafezones", "3", "What situation should prestrafe limit excute when player inside a start zone?\n0 - Disabled, no prestrafe limit in any start zone.\n1 - Only excute prestrafe limit in track start zone.\n2 - Excute prestrafe limit in both track start zone and stage start zone, but prestrafe limit would not excute in stage start zone when player's main timer is running.\n3 - Excute prestrafe limit in both track start zone and stage start zone.", 0, true, 0.0, true, 3.0);
 	gCV_PrestrafeLimit = new Convar("shavit_core_prestrafelimit", "100", "Prestrafe limitation in startzone.\nThe value used internally is style run speed + this.\ni.e. run speed of 250 can prestrafe up to 278 (+28) with regular settings.", 0, true, 0.0, false);
+	gCV_EnableShavitBhop = new Convar("shavit_core_enable_bhop", "1", "Enable the built-in bhop system. 0 - Disabled, 1 - Enabled", 0, true, 0.0, true, 1.0);
 	gCV_DefaultStyle.AddChangeHook(OnConVarChanged);
 
 	Anti_sv_cheats_cvars();
@@ -1659,7 +1661,7 @@ public void SQL_DeleteUserData_GetRecords_Callback(Database db, DBResultSet resu
 
 public Action Command_AutoBhop(int client, int args)
 {
-	if(!IsValidClient(client))
+	if(!IsValidClient(client) || !gCV_EnableShavitBhop.BoolValue)
 	{
 		return Plugin_Handled;
 	}
@@ -2050,7 +2052,9 @@ void DoJump(int client)
 		SetEntPropFloat(client, Prop_Send, "m_flStamina", 0.0);
 	}
 
-	RequestFrame(VelocityChanges, GetClientSerial(client));
+	if (gCV_EnableShavitBhop.BoolValue) {
+		RequestFrame(VelocityChanges, GetClientSerial(client));
+	}
 }
 
 void VelocityChanges(int data)
@@ -4595,8 +4599,8 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	bool bInsideStageZone = gA_Timers[client].iTimerTrack == Track_Main ? gB_Zones && Shavit_InsideZoneStage(client, iZoneStage, iStageZoneSpeedLimitFlags):false;
 	bool bInsideTrackStartZone = gB_Zones && Shavit_InsideZone(client, Zone_Start, gA_Timers[client].iTimerTrack);
 	bool bInsideStageStartZone = (bInsideStageZone && iZoneStage == gA_Timers[client].iLastStage);
-
 	bool bInStart = bInsideTrackStartZone || bInsideStageStartZone;
+	bool bZoneIsTeleport = false;
 	
 	float fSpeed[3];
 	float fCurrentTime;
@@ -4644,7 +4648,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			}
 		}
 
-		bShouldApplyLimit = !(fCurrentTime > 0.8 || (bNoVerticalSpeed && fSpeedXY > ClientMaxPrestrafe(client)));
+		bShouldApplyLimit = (!(fCurrentTime > 0.8 || (bNoVerticalSpeed && fSpeedXY > ClientMaxPrestrafe(client)))) && (iStageZoneSpeedLimitFlags & ZSLF_TeleHop) == 0;
 		
 		
 		// fCurrentTime <= 0.8 || (fSpeedXY <= ClientMaxPrestrafe(client) && bNoVerticalSpeed) || !bNoVerticalSpeed;//!bNoVerticalSpeed || (fCurrentTime <= 0.8 && fSpeedXY <= ClientMaxPrestrafe(client));
@@ -4913,7 +4917,11 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	int iOldButtons = GetEntProp(client, Prop_Data, "m_nOldButtons");
 
 	// enable duck-jumping/bhop in tf2
-	if (gEV_Type == Engine_TF2 && GetStyleSettingBool(gA_Timers[client].bsStyle, "bunnyhopping") && (buttons & IN_JUMP) > 0 && iGroundEntity != -1)
+	if (gEV_Type == Engine_TF2 && 
+		GetStyleSettingBool(gA_Timers[client].bsStyle, "bunnyhopping") && 
+		(buttons & IN_JUMP) > 0 && 
+		iGroundEntity != -1 && 
+		gCV_EnableShavitBhop.BoolValue)
 	{
 		float fAbsSpeed[3];
 		GetEntPropVector(client, Prop_Data, "m_vecAbsVelocity", fAbsSpeed);
@@ -4969,7 +4977,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			bEnableBhop = false;
 		}
 
-		if (bEnableBhop != gB_LastAutobunnyhopEnabled[client])
+		if (sv_autobunnyhopping != null && bEnableBhop != gB_LastAutobunnyhopEnabled[client])
 		{
 			gB_LastAutobunnyhopEnabled[client] = bEnableBhop;
 			sv_autobunnyhopping.ReplicateToClient(client, bEnableBhop ? "1":"0");

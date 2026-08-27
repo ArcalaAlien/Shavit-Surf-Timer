@@ -25,6 +25,7 @@
 #define _shavit_core_included
 
 #define SHAVIT_VERSION "3.4.2"
+
 #define SHAVIT_SURF_VERSION "1.1.3"
 #define SHAVIT_SURF_VERSION_MAJOR 1
 #define SHAVIT_SURF_VERSION_MINOR 1
