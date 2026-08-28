@@ -252,5 +252,6 @@ public void __pl_shavit_replay_recorder_SetNTVOptional()
 	MarkNativeAsOptional("Shavit_SetStageStartFrames");
 	MarkNativeAsOptional("Shavit_GetPlayerFrameOffsets");
 	MarkNativeAsOptional("Shavit_SetPlayerFrameOffsets");
+	MarkNativeAsOptional("Shavit_TrimFailureFrames");
 }
 #endif
